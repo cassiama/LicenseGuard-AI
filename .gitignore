@@ -1,0 +1,20 @@
+# sensitive files (don't be dumb!)
+.env
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+*.pyc
+
+# Virtual environments
+.venv
+
+# VSCode-related folders
+.devcontainer/
+.vscode/
+*.code-workspace
