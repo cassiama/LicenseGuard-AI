@@ -1,7 +1,18 @@
+import os
 import asyncio
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
+
+# import the environment variables and set up the MCP server
+# TODO: add a Pydantic Settings setup so that we're not using `python-dotenv` anymore
+load_dotenv()
+MCP_SERVER_HOST = os.getenv("MCP_SERVER_HOST", "http://localhost")
+MCP_SERVER_PORT = os.getenv("MCP_SERVER_PORT", "8000")
+MCP_URL = f"{MCP_SERVER_HOST}:{MCP_SERVER_PORT}/mcp"
 
 app = FastAPI()
 
@@ -17,19 +28,28 @@ app.add_middleware(
 )
 
 
-async def test_streaming_response():
-    yield "Hello from LicenseGuard-Agent! "
-    await asyncio.sleep(1.0)
-    test_str = "Testing if we can stream responses to the frontend... Goodbye!"
-    for word in test_str:
-        yield word
-        await asyncio.sleep(0.1)
+async def test_mcp_client_streaming_response():
+    try:
+        client = MultiServerMCPClient(
+            { "licenseguard-agent": { "url": MCP_URL, "transport": "streamable_http" } }
+        )
+        async with client.session("licenseguard-agent") as session:
+            yield "Connecting to MCP server... \n\n"
+            tools = await load_mcp_tools(session)
+            yield "Connection successful! \n\n"
+            yield f"Found {len(tools)} tools: \n\n"
+
+            for tool in tools:
+                yield f"Tool: {tool.name} \n\n"
+
+    except Exception as e:
+        yield f"Error connecting to MCP server: {e}\n\n"
 
 
 @app.get("/generate/report")
 async def main():
     return StreamingResponse(
-        test_streaming_response(),
+        test_mcp_client_streaming_response(),
         media_type="text/event-stream"
     )
 

@@ -6,4 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.121.2",
+    "langchain-mcp-adapters>=0.1.13",
+    "python-dotenv>=1.2.1",
 ]
