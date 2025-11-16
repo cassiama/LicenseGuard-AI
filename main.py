@@ -1,3 +1,9 @@
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+app = FastAPI()
+
+@app.get("/")
 def main():
     print("Hello from agent!")
 
