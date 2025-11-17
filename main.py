@@ -1,11 +1,17 @@
 import os
-import asyncio
+from typing import Annotated
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Form, UploadFile, File, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.tools import load_mcp_tools
+from pydantic import BaseModel
+
+try:
+    from agent.graph import agent as agent_graph
+    from agent.graph import AgentState
+except ImportError:
+    # Handle the case where the file is run directly
+    from agent import graph as agent_graph, AgentState
 
 # import the environment variables and set up the MCP server
 # TODO: add a Pydantic Settings setup so that we're not using `python-dotenv` anymore
@@ -27,32 +33,69 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
-async def test_mcp_client_streaming_response():
-    try:
-        client = MultiServerMCPClient(
-            { "licenseguard-agent": { "url": MCP_URL, "transport": "streamable_http" } }
-        )
-        async with client.session("licenseguard-agent") as session:
-            yield "Connecting to MCP server... \n\n"
-            tools = await load_mcp_tools(session)
-            yield "Connection successful! \n\n"
-            yield f"Found {len(tools)} tools: \n\n"
-
-            for tool in tools:
-                yield f"Tool: {tool.name} \n\n"
-
-    except Exception as e:
-        yield f"Error connecting to MCP server: {e}\n\n"
+class AnalysisRequest(BaseModel):
+    project_name: str
+    requirements_content: str
 
 
-@app.get("/generate/report")
-async def main():
+async def stream_agent_response(initial_state: AgentState):
+    """
+    Calls the agent graph and streams only the final report.
+    """
+    print("--- API: Streaming Agent Response ---")
+    
+    # get detailed events and filter for just the 'final_report' chunk from the 'summarize' node
+    async for event in agent_graph.astream_events(
+        initial_state,
+        version="v2",
+    ):
+        kind = event["event"]
+        if kind == "on_chain_end" and event["name"] == "summarize":
+            output = event["data"]["output"]
+            if "final_report" in output:
+                print("--- API: Streaming final_report chunk ---")
+                yield output["final_report"]
+
+    print("--- API: Stream complete ---")
+
+
+@app.post("/generate/report")
+async def generate_report(
+    requirements_file: Annotated[UploadFile, File(
+        description="A requirements.txt file (text/plain).")],
+    project_name: Annotated[str, Form(
+        description="The name of the project")],
+    authorization: str = Header(..., description="The user's Bearer token")
+):
+    # TODO: change this multi-line comment to be more descriptive.
+    """
+    Initiates an intelligent analysis of a Python project.
+    """    
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header is missing.")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization header should be in the form of 'Bearer <token>'.")
+
+    requirements_content: str = (await requirements_file.read()).decode("utf-8")
+
+    # initialize the internal agent with an empty JSON & report, the requirements.txt & 
+    # project name, and the user's auth token
+    # NOTE: passing in the user's auth token is a TEMPORARY solution; token passthrough is 
+    # heavily frowned upon (source: https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#token-passthrough)
+    initial_state = AgentState(
+        project_name=project_name,
+        requirements_content=requirements_content,
+        auth_token=authorization.split(" ")[1], # this gets the token from the Authorization header
+        analysis_json={},
+        final_report=""
+    )
+
+    # return the streaming response from the internal agent
     return StreamingResponse(
-        test_mcp_client_streaming_response(),
+        stream_agent_response(initial_state),
         media_type="text/event-stream"
     )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    pass
