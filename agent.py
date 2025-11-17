@@ -1,0 +1,177 @@
+import os
+import json
+from typing import TypedDict, Dict, Any
+from dotenv import load_dotenv
+from mcp.types import CallToolResult, TextContent
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from pydantic import SecretStr
+
+AGENT_NAME = "licenseguard-agent"
+
+# TODO: change the logging of all print statements to match FastAPI"s logging style
+
+# import the environment variables and set up the MCP server
+# TODO: add a Pydantic Settings setup so that we"re not using `python-dotenv` anymore
+load_dotenv()
+MCP_SERVER_HOST = os.getenv("MCP_SERVER_HOST", "http://localhost")
+MCP_SERVER_PORT = os.getenv("MCP_SERVER_PORT", "8000")
+MCP_URL = f"{MCP_SERVER_HOST}:{MCP_SERVER_PORT}/mcp"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+if OPENAI_API_KEY == "":
+    raise RuntimeError("Missing OpenAI API key!")
+
+
+class AgentState(TypedDict):
+    project_name: str
+    requirements_content: str
+    auth_token: str
+    analysis_json: dict # the tool"s output
+    final_report: str  # the LLM"s summary
+
+SYSTEM_PROMPT = """
+You are a specialized License Compliance Assistant and Python Ecosystem Expert. Your only job is to analyze the JSON data from a tool call and generate a high-value, clear, human-readable, and actionable risk report in Markdown.
+
+Instructions:
+    1. **Analyze**: Review the list of packages and their licenses provided in the JSON.
+    - *Crucial*: You must use the `analyze_dependencies` tool to get the raw JSON analysis data.
+    2. **Verify**: Compare the detected licenses against your internal knowledge base of common Python packages. 
+    - *Crucial*: If a package is known to be strictly copyleft but the tool detected a permissive license, FLAG IT as a "High Risk Verification Needed" item. Make sure to note that the confidence score in this particular license's accuracy has declined due to that discovery.
+    3. **Synthesize**: Do not just list conflicts; explain *why* they are conflicts (e.g., "Viral effect of GPL linked with proprietary code").
+    4. **Recommend**: For every high-risk or conflicting package, you MUST provide a specific, drop-in alternative from the Python ecosystem if one exists.
+
+Your response must be a summary in Markdown format. Follow the template below exactly.
+
+Markdown Template:
+```
+## 🛡️ LicenseGuard Report
+
+Here is the compliance analysis for your project.
+
+### 📦 Package Summary
+(If no packages were provided, explicitly state: "No packages were provided.")
+(If packages exist, list all packages formatted as: `package_name`: **License**)
+
+### ⚠️ License Conflicts
+(If no conflicts, explicitly state: "No obvious license conflicts detected here.")
+(If conflicts/risks exist, use the format below:)
+* **Conflict**: [License A] vs [License B]
+    * **Source**: `[Package Name]`
+    * **Risk**: [Brief explanation, e.g., "GPL requires the entire project to be open-sourced."]
+
+### 🪜 Actionable Next Steps
+(If no conflicts in the previous section, explicitly state: "No further actions need to be taken.")
+(If there were conflicts in the previous section, you must provide specific alternatives here. Do not give generic legal advice.)
+**Recommended Swaps:**
+* **Problem**: `[Problem Package]` ([License])
+* **Solution**: Switch to `[Alternative Package]` ([License])
+* **Migration Note**: [Brief note, e.g., "Direct drop-in replacement" or "Requires minor code changes."]
+
+**General Steps:**
+1. [Specific step 1]
+2. [Specific step 2]
+```
+"""
+
+async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
+    # TODO: add a multi-line comment
+    print("--- AGENT: Calling Analysis Tool ---")
+    project_name = state["project_name"]
+    requirements_content = state["requirements_content"]
+    auth_token = state["auth_token"]
+
+    analysis_json: str = ""
+
+    try:
+        # create the MCP client so that we can call the MCP server
+        client = MultiServerMCPClient(
+            connections={ AGENT_NAME: { "url": MCP_URL, "transport": "streamable_http" } }
+        )
+        async with client.session(AGENT_NAME) as session:
+            # invoke the specific tool we need
+            tool_result = await session.call_tool(
+                "analyze_dependencies",
+                arguments={
+                    "project_name": project_name,
+                    "requirements_content": requirements_content,
+                    "user_token": auth_token
+                }
+            )
+
+            print(f"Tool call result: {tool_result}")
+            if hasattr(tool_result, "isError") and tool_result.isError:
+                print(f"Tool execution error: {tool_result.isError}")
+
+            # attempt to retrieve the JSON from the tool result
+            # if hasattr(tool_result, "content") and tool_result.content:
+            if hasattr(tool_result, "content") and isinstance(tool_result.content[0], TextContent):
+                print(f"JSON returned from the tool call: {tool_result.content[0].text}")
+                analysis_json = tool_result.content[0].text
+
+        
+        print("--- AGENT: Tool Call Successful ---")
+        # Return the JSON result to be put into the "analysis_json" key in our state
+        return {"analysis_json": analysis_json}
+    
+    except Exception as e:
+        print(f"--- AGENT: ERROR in call_analysis_tool ---: {e}")
+        # TODO: improve the error handling to be less... basic
+        return {"analysis_json": {"error": str(e)}}
+
+
+async def summarize_report(state: AgentState) -> Dict[str, str]:
+    # TODO: add a multi-line comment
+    print("--- AGENT: Summarizing Report ---")
+    analysis_json: dict = state["analysis_json"]
+
+    if "error" in analysis_json:
+         return {"final_report": f"Failed to generate report: {analysis_json["error"]}"}
+
+    # set up the llm and the prompt
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.0,
+        api_key=SecretStr(OPENAI_API_KEY)
+    )
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        ("user", "Here is the JSON analysis data. Please generate the report.\n\n{json_data}")
+    ])
+    # set up the parser
+    summarize_chain = prompt | llm | StrOutputParser()
+    
+    # invoke the summarizer chain
+    report = await summarize_chain.ainvoke({
+        "json_data": json.dumps(analysis_json)
+    })
+    
+    print("--- AGENT: Summary Generation Complete ---")
+    # return the final report to be put into the "final_report" key
+    return {"final_report": report}
+
+
+# code inspired by this video: https://youtu.be/wuHXAzXzaM8
+def build_agent_graph():
+    builder = StateGraph(AgentState)
+
+    # add our nodes for calling the analysis tool and summarizing the report
+    builder.add_node("call_tool", call_analysis_tool)
+    builder.add_node("summarize", summarize_report)
+
+    # defining a simple & linear flow:
+    builder.add_edge(START, "call_tool")
+    # after calling the tool, summarize
+    builder.add_edge("call_tool", "summarize")
+    # after summarizing, end
+    builder.add_edge("summarize", END)
+
+    # finally, compile the graph
+    print("--- AGENT: Compiling Graph ---")
+    graph = builder.compile()
+    return graph
+
+
+graph = build_agent_graph()
