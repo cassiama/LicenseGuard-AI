@@ -1,4 +1,5 @@
 import os
+import asyncio
 from typing import Annotated
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, UploadFile, File, Header, HTTPException
@@ -50,11 +51,11 @@ async def stream_agent_response(initial_state: AgentState):
         version="v2",
     ):
         kind = event["event"]
-        if kind == "on_chain_end" and event["name"] == "summarize":
-            output = event["data"]["output"]
-            if "final_report" in output:
-                print("--- API: Streaming final_report chunk ---")
-                yield output["final_report"]
+        if kind == "on_chat_model_stream":
+            # stream the response token by token
+            chunk = event["data"]["chunk"]
+            print(chunk)
+            yield chunk.content
 
     print("--- API: Stream complete ---")
 
@@ -93,7 +94,12 @@ async def generate_report(
     # return the streaming response from the internal agent
     return StreamingResponse(
         stream_agent_response(initial_state),
-        media_type="text/event-stream"
+        media_type="text/plain",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
     )
 
 
