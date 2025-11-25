@@ -63,7 +63,7 @@ Run the following command to download the image from Docker Hub on your machine:
 docker pull licenseguard/license-guard:ai-latest
 ```
 
-> NOTE: If you want a specific version, then pull the `licenseguard/license-guard:api-v{x.y.z}` image instead (`x.y.z` refers to the [semantic verisoning number](https://semver.org/)).
+> NOTE: If you want a specific version, then pull the `licenseguard/license-guard:ai-v{x.y.z}` image instead (`x.y.z` refers to the [semantic verisoning number](https://semver.org/)).
 
 > NOTE: For those who prefer GHCR, replace any reference to `licenseguard/license-guard` with `ghcr.io/cassiama/license-guard` for any of the commands below, and you'll be good. 👍🏿
 
