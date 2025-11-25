@@ -48,3 +48,42 @@ Optionally, for the sake of reproducibility, you can also provide the following 
 - `LANGCHAIN_ENDPOINT`: a remote URL that you can access for LangSmith API calls; typically the official LangSmith API URL. It should look like this: `https://api.smith.langchain.com`
 - `LANGCHAIN_API_KEY`: a stirng corresponding to the LangSmith API key (provided by LangChain/LangSmith).
 - `LANGCHAIN_PROJECT`: a string corresponding to the name of the project. However, if not provided, the project name will be `default`. It should look like this: `LicenseGuard-AI`
+
+
+### Usage
+
+For the purposes of this guide, we're going to assume that you want to pull the image from Docker Hub. However, you can also download the image from the GitHub Container Registry (GHCR) instead if you'd like.
+
+#### Downloading the Docker Image
+
+Run the following command to download the image from Docker Hub on your machine:
+
+```bash
+docker pull licenseguard/license-guard:ai-latest
+```
+
+> NOTE: If you want a specific version, then pull the `licenseguard/license-guard:api-v{x.y.z}` image instead (`x.y.z` refers to the [semantic verisoning number](https://semver.org/)).
+
+> NOTE: For those who prefer GHCR, replace any reference to `licenseguard/license-guard` with `ghcr.io/cassiama/license-guard` for any of the commands below, and you'll be good. 👍🏿
+
+#### Running the Docker Image
+
+**Run the server** by running the following command (depending on your preference on environment variables):
+
+- **With `.env` file:**
+Run the Docker image by running `docker run -p 8001:8001 --env-file .env licenseguard/license-guard:ai-latest` in the terminal.
+
+- **With an environment variable:**
+Run the Docker image by running `docker run -p 8001:8001 -e MCP_SERVER_HOST=YOUR_MCP_SERVER_HOST -e MCP_SERVER_PORT=YOUR_MCP_SERVER_PORT -e OPENAI_API_KEY=YOUR_OPENAI_API_KEY licenseguard/license-guard:ai-latest` in the terminal.
+
+> NOTE: This command runs the server in **production** mode, not dev mode.
+
+> NOTE: **You** are responsible for any HTTPS-related concerns. For example, if you are running this behind a TLS Termination Proxy, you need to [add "--proxy-headers" to the `CMD` line in the Dockerfile](https://fastapi.tiangolo.com/deployment/docker/#behind-a-tls-termination-proxy). Please view [FastAPI's documentation on HTTPS](https://fastapi.tiangolo.com/deployment/https/) for more general information on this topic.
+
+You can access the server at `http://localhost:8001`.
+
+Once you have the server running, you can view the documentation by navigating to `http://localhost:8001/docs`.
+
+## Available Routes
+
+For the latest image of the AI microservice on Docker Hub, you can access the following routes:
