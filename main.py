@@ -1,5 +1,5 @@
 import os
-import asyncio
+from datetime import datetime
 from typing import Annotated
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, UploadFile, File, Header, HTTPException
@@ -43,7 +43,7 @@ async def stream_agent_response(initial_state: AgentState):
     """
     Calls the agent graph and streams only the final report.
     """
-    print("--- API: Streaming Agent Response ---")
+    print(f"[{datetime.now()}]: Starting the agent's streaming response.")
     
     # get detailed events and filter for just the 'final_report' chunk from the 'summarize' node
     async for event in agent_graph.astream_events(
@@ -57,7 +57,7 @@ async def stream_agent_response(initial_state: AgentState):
             print(chunk)
             yield chunk.content
 
-    print("--- API: Stream complete ---")
+    print(f"[{datetime.now()}]: Stream complete.")
 
 
 @app.post("/generate/report")
@@ -68,9 +68,20 @@ async def generate_report(
         description="The name of the project")],
     authorization: str = Header(..., description="The user's Bearer token")
 ):
-    # TODO: change this multi-line comment to be more descriptive.
     """
-    Initiates an intelligent analysis of a Python project.
+    Accepts a requirements.txt file upload, a project name & the user's authentication token, analyzes each license associated with the dependencies in the 'requirements.txt' file, and initiates an intelligent analysis of the requirements.txt file.
+
+    Throws a 401 if:
+        - the authorization header is missing.
+        - the authorization header is in the correct form.
+
+    Keyword arguments:
+
+    file -- an non-empty 'requirements.txt'
+
+    project_name -- the name of your project
+
+    authorization -- a header that contains the user's Bearer token
     """    
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header is missing.")

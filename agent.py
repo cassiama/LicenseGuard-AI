@@ -2,7 +2,7 @@ import os
 import json
 from typing import TypedDict, Dict, Any
 from dotenv import load_dotenv
-from mcp.types import CallToolResult, TextContent
+from mcp.types import TextContent
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -26,8 +26,8 @@ if OPENAI_API_KEY == "":
 class AgentState(TypedDict):
     project_name: str
     requirements_content: str
-    auth_token: str
-    analysis_json: dict # the tool"s output
+    auth_token: str # TODO: remove this once OAuth Client Credentials login flow is implemented
+    analysis_json: dict # the tool's output
     final_report: str  # the LLM"s summary
 
 SYSTEM_PROMPT = """
@@ -73,7 +73,14 @@ Here is the compliance analysis for your project.
 """
 
 async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
-    # TODO: add a multi-line comment
+    """
+    An async function that calls the `analyze_dependencies` tool on the MCP server. Takes in the agent's current state (includes project name, the content of the requirements.txt file, and the current user's JWT) as an argument in order to receive a JSON from the MCP server.
+    
+    :param state: Models the agent's current state, which includes project name, the content of the requirements.txt file, and the current user's JWT.
+    :type state: AgentState
+    :return: A JSON that corresponds to an analysis of the licenses of the packages in the requirements.txt file. Should detail the licenses, name, current version, and confidence of the license being correct.
+    :rtype: Dict[str, Any]
+    """
     project_name = state["project_name"]
     requirements_content = state["requirements_content"]
     auth_token = state["auth_token"]
@@ -110,7 +117,14 @@ async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
 
 
 async def summarize_report(state: AgentState) -> Dict[str, str]:
-    # TODO: add a multi-line comment
+    """
+    An async function that summarizes the analysis of the requirements.txt file and returns a final risk report. Takes in the agent's current state (includes the analysis of the requirements.txt file) as an argument in order to summarize the analysis JSON with the internal agent.
+    
+    :param state: Models the agent's current state, which includes the analysis of the requirements.txt file.
+    :type state: AgentState
+    :return: Returns the final report in a dictionary.
+    :rtype: Dict[str, str]
+    """
     analysis_json: dict = state["analysis_json"]
 
     if "error" in analysis_json:
