@@ -626,7 +626,7 @@ wheels = [
 ]
 
 [[package]]
-name = "licenseguard-agent"
+name = "licenseguard-ai"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

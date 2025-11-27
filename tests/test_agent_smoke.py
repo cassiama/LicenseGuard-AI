@@ -78,7 +78,7 @@ async def test_agent_smoke_test(mock_env, mock_dependencies):
     """
     # import and build the agent graph
     # NOTE: this should happen after mocks are set up
-    from agent.agent import build_agent_graph
+    from agent import build_agent_graph
     
     graph = build_agent_graph()
     

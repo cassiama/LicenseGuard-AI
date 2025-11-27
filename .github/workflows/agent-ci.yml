@@ -33,5 +33,4 @@ jobs:
           OPENAI_API_KEY: 'sk-test-123'
       
       - name: Run tests
-        working-directory: tests
         run: uv run pytest -q
