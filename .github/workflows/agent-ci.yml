@@ -20,12 +20,17 @@ jobs:
       
       # Fast Python setup with uv
       - uses: astral-sh/setup-uv@v6
-      - run: uv python install
-      - run: uv venv && uv sync --all-extras --dev
+      
+      - name: Install dependencies
+        working-directory: agent
+        run: |
+          uv python install
+          uv venv
+          uv sync --all-extras --dev
       
       - name: Lint with ruff
-        run: |
-          uv run ruff check .
+        working-directory: agent
+        run: uv run ruff check .
         env:
           OPENAI_API_KEY: 'sk-test-123'
       
