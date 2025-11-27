@@ -1,5 +1,5 @@
 [project]
-name = "LicenseGuard-agent"
+name = "LicenseGuard-AI"
 version = "0.1.0"
 description = "An AI agent responsible for providing insights to the frontend"
 readme = "README.md"
