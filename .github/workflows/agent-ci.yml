@@ -22,18 +22,16 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       
       - name: Install dependencies
-        working-directory: agent
         run: |
           uv python install
           uv venv
           uv sync --all-extras --dev
       
       - name: Lint with ruff
-        working-directory: agent
         run: uv run ruff check .
         env:
           OPENAI_API_KEY: 'sk-test-123'
       
       - name: Run tests
-        working-directory: agent
+        working-directory: tests
         run: uv run pytest -q
