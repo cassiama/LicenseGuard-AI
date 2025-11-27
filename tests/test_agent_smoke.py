@@ -59,9 +59,9 @@ def mock_dependencies(monkeypatch):
     mock_mcp_client = MagicMock(return_value=mock_client_instance)
     
     # apply the mocks using monkeypatch
-    monkeypatch.setattr('agent.MultiServerMCPClient', mock_mcp_client)
-    monkeypatch.setattr('agent.ChatOpenAI', mock_chat_openai)
-    monkeypatch.setattr('agent.ChatPromptTemplate', mock_prompt_template)
+    monkeypatch.setattr('langchain_mcp_adapters.client.MultiServerMCPClient', mock_mcp_client)
+    monkeypatch.setattr('langchain_openai.ChatOpenAI', mock_chat_openai)
+    monkeypatch.setattr('langchain_core.prompts.ChatPromptTemplate', mock_prompt_template)
     
     return {
         'mcp_client': mock_mcp_client,
@@ -78,8 +78,7 @@ async def test_agent_smoke_test(mock_env, mock_dependencies):
     """
     # import and build the agent graph
     # NOTE: this should happen after mocks are set up
-    import agent
-    from agent import build_agent_graph
+    from agent.agent import build_agent_graph
     
     graph = build_agent_graph()
     
