@@ -25,7 +25,7 @@ jobs:
       
       - name: Lint with ruff
         run: |
-          ruff check .
+          uv run ruff check .
         env:
           OPENAI_API_KEY: 'sk-test-123'
       
