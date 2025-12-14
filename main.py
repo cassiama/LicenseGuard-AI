@@ -31,8 +31,9 @@ app.add_middleware(
     # TODO: for production, change to be specifically the frontend URL
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
+
 
 class AnalysisRequest(BaseModel):
     project_name: str
@@ -44,7 +45,7 @@ async def stream_agent_response(initial_state: AgentState):
     Calls the agent graph and streams only the final report.
     """
     print(f"[{datetime.now()}]: Starting the agent's streaming response.")
-    
+
     # get detailed events and filter for just the 'final_report' chunk from the 'summarize' node
     async for event in agent_graph.astream_events(
         initial_state,
@@ -62,11 +63,11 @@ async def stream_agent_response(initial_state: AgentState):
 
 @app.post("/generate/report")
 async def generate_report(
-    requirements_file: Annotated[UploadFile, File(
-        description="A requirements.txt file (text/plain).")],
-    project_name: Annotated[str, Form(
-        description="The name of the project")],
-    authorization: str = Header(..., description="The user's Bearer token")
+    requirements_file: Annotated[
+        UploadFile, File(description="A requirements.txt file (text/plain).")
+    ],
+    project_name: Annotated[str, Form(description="The name of the project")],
+    authorization: str = Header(..., description="The user's Bearer token"),
 ):
     """
     Accepts a requirements.txt file upload, a project name & the user's authentication token, analyzes each license associated with the dependencies in the 'requirements.txt' file, and initiates an intelligent analysis of the requirements.txt file.
@@ -82,24 +83,29 @@ async def generate_report(
     project_name -- the name of your project
 
     authorization -- a header that contains the user's Bearer token
-    """    
+    """
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header is missing.")
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Authorization header should be in the form of 'Bearer <token>'.")
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header should be in the form of 'Bearer <token>'.",
+        )
 
     requirements_content: str = (await requirements_file.read()).decode("utf-8")
 
-    # initialize the internal agent with an empty JSON & report, the requirements.txt & 
+    # initialize the internal agent with an empty JSON & report, the requirements.txt &
     # project name, and the user's auth token
-    # NOTE: passing in the user's auth token is a TEMPORARY solution; token passthrough is 
+    # NOTE: passing in the user's auth token is a TEMPORARY solution; token passthrough is
     # heavily frowned upon (source: https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#token-passthrough)
     initial_state = AgentState(
         project_name=project_name,
         requirements_content=requirements_content,
-        auth_token=authorization.split(" ")[1], # this gets the token from the Authorization header
+        auth_token=authorization.split(" ")[
+            1
+        ],  # this gets the token from the Authorization header
         analysis_json={},
-        final_report=""
+        final_report="",
     )
 
     # return the streaming response from the internal agent
@@ -110,7 +116,7 @@ async def generate_report(
             "X-Accel-Buffering": "no",
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )
 
 

@@ -26,9 +26,12 @@ if OPENAI_API_KEY == "":
 class AgentState(TypedDict):
     project_name: str
     requirements_content: str
-    auth_token: str # TODO: remove this once OAuth Client Credentials login flow is implemented
-    analysis_json: dict # the tool's output
+    auth_token: (
+        str  # TODO: remove this once OAuth Client Credentials login flow is implemented
+    )
+    analysis_json: dict  # the tool's output
     final_report: str  # the LLM"s summary
+
 
 SYSTEM_PROMPT = """
 You are a specialized License Compliance Assistant and Python Ecosystem Expert. Your only job is to analyze the JSON data from a tool call and generate a high-value, clear, human-readable, and actionable risk report in Markdown.
@@ -72,10 +75,11 @@ Here is the compliance analysis for your project.
 2. [Specific step 2]
 """
 
+
 async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
     """
     An async function that calls the `analyze_dependencies` tool on the MCP server. Takes in the agent's current state (includes project name, the content of the requirements.txt file, and the current user's JWT) as an argument in order to receive a JSON from the MCP server.
-    
+
     :param state: Models the agent's current state, which includes project name, the content of the requirements.txt file, and the current user's JWT.
     :type state: AgentState
     :return: A JSON that corresponds to an analysis of the licenses of the packages in the requirements.txt file. Should detail the licenses, name, current version, and confidence of the license being correct.
@@ -90,7 +94,7 @@ async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
     try:
         # create the MCP client so that we can call the MCP server
         client = MultiServerMCPClient(
-            connections={ AGENT_NAME: { "url": MCP_URL, "transport": "streamable_http" } }
+            connections={AGENT_NAME: {"url": MCP_URL, "transport": "streamable_http"}}
         )
         async with client.session(AGENT_NAME) as session:
             # invoke the specific tool we need
@@ -99,18 +103,19 @@ async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
                 arguments={
                     "project_name": project_name,
                     "requirements_content": requirements_content,
-                    "user_token": auth_token
-                }
+                    "user_token": auth_token,
+                },
             )
 
             # if possible, retrieve the JSON from the tool result
-            if hasattr(tool_result, "content") and isinstance(tool_result.content[0], TextContent):
+            if hasattr(tool_result, "content") and isinstance(
+                tool_result.content[0], TextContent
+            ):
                 analysis_json = tool_result.content[0].text
 
-        
         # Return the JSON result to be put into the "analysis_json" key in our state
         return {"analysis_json": analysis_json}
-    
+
     except Exception as e:
         # TODO: improve the error handling to be less... basic
         return {"analysis_json": {"error": str(e)}}
@@ -119,7 +124,7 @@ async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
 async def summarize_report(state: AgentState) -> Dict[str, str]:
     """
     An async function that summarizes the analysis of the requirements.txt file and returns a final risk report. Takes in the agent's current state (includes the analysis of the requirements.txt file) as an argument in order to summarize the analysis JSON with the internal agent.
-    
+
     :param state: Models the agent's current state, which includes the analysis of the requirements.txt file.
     :type state: AgentState
     :return: Returns the final report in a dictionary.
@@ -128,26 +133,27 @@ async def summarize_report(state: AgentState) -> Dict[str, str]:
     analysis_json: dict = state["analysis_json"]
 
     if "error" in analysis_json:
-         return {"final_report": f"Failed to generate report: {analysis_json["error"]}"}
+        return {"final_report": f"Failed to generate report: {analysis_json['error']}"}
 
     # set up the llm and the prompt
     llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.0,
-        api_key=SecretStr(OPENAI_API_KEY)
+        model="gpt-4o-mini", temperature=0.0, api_key=SecretStr(OPENAI_API_KEY)
     )
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("user", "Here is the JSON analysis data. Please generate the report.\n\n{json_data}")
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_PROMPT),
+            (
+                "user",
+                "Here is the JSON analysis data. Please generate the report.\n\n{json_data}",
+            ),
+        ]
+    )
     # set up the parser
     summarize_chain = prompt | llm | StrOutputParser()
-    
+
     # invoke the summarizer chain
-    report = await summarize_chain.ainvoke({
-        "json_data": json.dumps(analysis_json)
-    })
-    
+    report = await summarize_chain.ainvoke({"json_data": json.dumps(analysis_json)})
+
     # return the final report to be put into the "final_report" key
     return {"final_report": report}
 

@@ -13,10 +13,29 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LANGCHAIN_TRACING_V2: true
+      LANGCHAIN_ENDPOINT: https://api.smith.langchain.com
+      LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
+      LANGCHAIN_PROJECT: ${{ secrets.LANGCHAIN_PROJECT }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          for v in OPENAI_API_KEY LANGCHAIN_API_KEY LANGCHAIN_PROJECT; do
+            if [ -z "${!v}" ]; then
+              echo "❌ Missing $v (not delivered to this run)."
+              exit 1
+            fi
+          done
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
+          LANGCHAIN_PROJECT: ${{ secrets.LANGCHAIN_PROJECT }}
       
       # Fast Python setup with uv
       - uses: astral-sh/setup-uv@v6
