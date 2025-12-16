@@ -11,7 +11,7 @@ try:
     from agent.graph import agent as agent_graph
     from agent.graph import AgentState
 except ImportError:
-    # Handle the case where the file is run directly
+    # should handle the case where the file is run directly
     from agent import graph as agent_graph, AgentState
 
 # import the environment variables and set up the MCP server
@@ -74,7 +74,7 @@ async def generate_report(
 
     Throws a 401 if:
         - the authorization header is missing.
-        - the authorization header is in the correct form.
+        - the authorization header isn't in the correct form.
 
     Keyword arguments:
 
