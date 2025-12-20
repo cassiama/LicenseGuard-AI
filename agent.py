@@ -114,6 +114,7 @@ async def retry_tool_call(
     raise last_exception
 
 
+# TODO: remove the interceptors from the code bc they're causing problems
 # code taken from the "Error handling with fallback" interceptor from the LangChain docs:
 # https://docs.langchain.com/oss/python/langchain/mcp#custom-interceptors
 async def fallback_interceptor(

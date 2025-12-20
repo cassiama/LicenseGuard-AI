@@ -1,6 +1,7 @@
 import asyncio
 import os
 import traceback
+import httpcore
 import httpx
 from datetime import datetime
 from typing import Annotated, List, Optional
@@ -71,23 +72,34 @@ async def generate_final_report_from_agent(
 
         print(f"[{datetime.now()}]: Finished generating the final report.")
         return chunks
-    except* httpx.ConnectError:
-        print(
-            f"[{datetime.now()}]: Connection to MCP server failed. Ending response immediately."
+    except ExceptionGroup as eg:
+        # check if any exception in the group is a connection error
+        # prioritize connection errors (e.g. HTTP 503) over generic errors (e.g. HTTP 500)
+        # TODO: if there are more errors than just connection or generic errors, come up 
+        # with a more robust way handle multiple exceptions so that this doesn't become a 
+        # bunch of if-else statements
+        has_connect_error = any(
+            isinstance(exc, (httpx.ConnectError, httpcore.ConnectError))
+            for exc in eg.exceptions
         )
-        raise HTTPException(
-            status_code=503,
-            detail="Unable to connect to the MCP server. Please try again later.",
-        )
-    except* Exception as e:
-        print(
-            f'[{datetime.now()}]: An unknown error occurred ("{str(e)}"). Ending response immediately.'
-        )
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail="An unknown error occurred while generating the report. Please try again later.",
-        )
+        
+        if has_connect_error:
+            print(
+                f"[{datetime.now()}]: Connection to MCP server failed. Ending response immediately."
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to connect to the MCP server. Please try again later.",
+            )
+        else:
+            print(
+                f'[{datetime.now()}]: An unknown error occurred ("{str(eg)}"). Ending response immediately.'
+            )
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500,
+                detail="An unknown error occurred while generating the report. Please try again later.",
+            )
 
 
 async def stream_agent_response(chunks: List[str]):
