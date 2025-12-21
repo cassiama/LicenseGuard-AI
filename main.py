@@ -75,14 +75,14 @@ async def generate_final_report_from_agent(
     except ExceptionGroup as eg:
         # check if any exception in the group is a connection error
         # prioritize connection errors (e.g. HTTP 503) over generic errors (e.g. HTTP 500)
-        # TODO: if there are more errors than just connection or generic errors, come up 
-        # with a more robust way handle multiple exceptions so that this doesn't become a 
+        # TODO: if there are more errors than just connection or generic errors, come up
+        # with a more robust way handle multiple exceptions so that this doesn't become a
         # bunch of if-else statements
         has_connect_error = any(
             isinstance(exc, (httpx.ConnectError, httpcore.ConnectError))
             for exc in eg.exceptions
         )
-        
+
         if has_connect_error:
             print(
                 f"[{datetime.now()}]: Connection to MCP server failed. Ending response immediately."

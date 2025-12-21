@@ -136,7 +136,7 @@ async def test_agent_handles_mcp_error_gracefully(monkeypatch):
     """
     Error handling verification: Agent should handle MCP errors without crashing.
     """
-    # TODO: refactor this test so that the mock LLM and the mock MCP server can be passed in as 
+    # TODO: refactor this test so that the mock LLM and the mock MCP server can be passed in as
     # arguments instead of repeating all of this work:
     # apply the mocks within their own context to prevent leakage into other tests
     with monkeypatch.context() as mp:
@@ -173,15 +173,14 @@ async def test_agent_handles_mcp_error_gracefully(monkeypatch):
         )
         # reload the agent to grab the mocked classes and attributes
         import agent  # noqa: F401
+
         importlib.reload(agent)
 
         mp.setattr("agent.ChatOpenAI", mock_chat_openai)
         mp.setattr("agent.ChatPromptTemplate", mock_prompt_template)
         mp.setattr("agent.MultiServerMCPClient", mock_mcp_client)
         mp.setattr("langchain_openai.ChatOpenAI", mock_chat_openai)
-        mp.setattr(
-            "langchain_core.prompts.ChatPromptTemplate", mock_prompt_template
-        )
+        mp.setattr("langchain_core.prompts.ChatPromptTemplate", mock_prompt_template)
 
         # import and build the agent graph
         from agent import build_agent_graph
@@ -203,30 +202,31 @@ async def test_agent_handles_mcp_error_gracefully(monkeypatch):
         assert "final_report" in result
         assert "Failed to generate report" in result["final_report"]
 
-        
 
 @pytest.mark.asyncio
 async def test_call_analysis_tool_httpcore_connect_error():
     """Verify `httpcore.ConnectError` is caught by interceptor and returns error dict."""
     # create a mock handler that raises `httpcore.ConnectError`
     mock_handler = AsyncMock(side_effect=httpcore.ConnectError("Connection refused"))
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
-    assert "Connection refused" in result["error"] or "httpcore" in result["error"].lower()
+    assert (
+        "Connection refused" in result["error"] or "httpcore" in result["error"].lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -234,19 +234,19 @@ async def test_call_analysis_tool_httpx_connect_error():
     """Verify `httpx.ConnectError` is caught by interceptor and returns error dict."""
     # create a mock handler that raises `httpx.ConnectError`
     mock_handler = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -258,19 +258,19 @@ async def test_call_analysis_tool_generic_exception():
     """Verify base `Exception` is caught by interceptor and returns error dict."""
     # create a mock handler that raises `ValueError`
     mock_handler = AsyncMock(side_effect=ValueError("Unexpected error"))
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -289,40 +289,46 @@ async def test_call_analysis_tool_error_in_response(monkeypatch):
         mock_text_content.text = '{"error": "MCP server internal error"}'
         mock_tool_result.content = [mock_text_content]
         mock_session.call_tool = AsyncMock(return_value=mock_tool_result)
-        
+
         mock_client_instance = MagicMock()
-        mock_client_instance.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_client_instance.session.return_value.__aexit__ = AsyncMock(return_value=None)
-    
+        mock_client_instance.session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_client_instance.session.return_value.__aexit__ = AsyncMock(
+            return_value=None
+        )
+
         mp.setattr(
             "langchain_mcp_adapters.client.MultiServerMCPClient",
-            MagicMock(return_value=mock_client_instance)
+            MagicMock(return_value=mock_client_instance),
         )
-        
+
         # reload the agent to grab the mocked classes and attributes
         import agent
+
         importlib.reload(agent)
 
         # import after mocking
         from agent import call_analysis_tool, AgentState
-        
+
         state = AgentState(
             project_name="test",
             requirements_content="requests==2.0.0",
             auth_token="test-token",
             analysis_json={},
-            final_report=""
+            final_report="",
         )
-        
+
         # call the interceptor directly (since mocking it causes issues)
         result = await call_analysis_tool(state)
-        
+
         # assert that analysis JSON should contain the error
         assert "analysis_json" in result
         assert "error" in result["analysis_json"]
         # the error that the MCP server throws becomes the entire JSON string wrapped in an error key
-        assert "mcp server internal error" in str(result["analysis_json"]["error"]).lower()
-
+        assert (
+            "mcp server internal error" in str(result["analysis_json"]["error"]).lower()
+        )
 
 
 @pytest.mark.asyncio
@@ -333,36 +339,36 @@ async def test_summarize_report_with_error_json(monkeypatch):
         # mock the LLM (shouldn't be called when there's an error)
         mock_llm_instance = MagicMock()
         mock_chat_openai = MagicMock(return_value=mock_llm_instance)
-    
+
         mp.setattr("agent.ChatOpenAI", mock_chat_openai)
         mp.setattr("langchain_openai.ChatOpenAI", mock_chat_openai)
-        
+
         # reload the agent to grab the mocked classes and attributes
         import agent
+
         importlib.reload(agent)
 
         # import after mocking
         from agent import summarize_report, AgentState
-        
+
         state = AgentState(
             project_name="test",
             requirements_content="requests==2.0.0",
             auth_token="test-token",
             analysis_json={"error": "MCP tool failed"},
-            final_report=""
+            final_report="",
         )
-        
+
         # call the report summarization function
         result = await summarize_report(state)
-        
+
         # assert that the final_report should contain error message
         assert "final_report" in result
         assert "Failed to generate report" in result["final_report"]
         assert "MCP tool failed" in result["final_report"]
-        
+
         # LLM should NOT have been called
         mock_chat_openai.assert_not_called()
-
 
 
 @pytest.mark.asyncio
@@ -374,44 +380,45 @@ async def test_summarize_report_success_path(monkeypatch):
         mock_prompt = MagicMock()
         mock_prompt_template = MagicMock()
         mock_prompt_template.from_messages = MagicMock(return_value=mock_prompt)
-        
+
         mock_llm_chain = MagicMock()
-        mock_llm_chain.ainvoke = AsyncMock(return_value="## 🛡️ LicenseGuard Report\n\nTest report")
-        
+        mock_llm_chain.ainvoke = AsyncMock(
+            return_value="## 🛡️ LicenseGuard Report\n\nTest report"
+        )
+
         mock_prompt.__or__ = MagicMock(return_value=mock_llm_chain)
         mock_llm_chain.__or__ = MagicMock(return_value=mock_llm_chain)
-        
+
         mock_llm_instance = MagicMock()
         mock_chat_openai = MagicMock(return_value=mock_llm_instance)
-    
+
         mp.setattr("agent.ChatOpenAI", mock_chat_openai)
         mp.setattr("agent.ChatPromptTemplate", mock_prompt_template)
         mp.setattr("langchain_openai.ChatOpenAI", mock_chat_openai)
         mp.setattr("langchain_core.prompts.ChatPromptTemplate", mock_prompt_template)
-        
+
         # reload the agent to grab the mocked classes and attributes
         import agent
+
         importlib.reload(agent)
 
         # import after mocking
         from agent import summarize_report, AgentState
-        
+
         state = AgentState(
             project_name="test",
             requirements_content="requests==2.0.0",
             auth_token="test-token",
             analysis_json={"packages": [{"name": "requests", "license": "Apache-2.0"}]},
-            final_report=""
+            final_report="",
         )
-        
+
         # call the report summarization function
         result = await summarize_report(state)
-        
+
         # assert that the final_report should contain the LLM's response
         assert "final_report" in result
         assert "LicenseGuard Report" in result["final_report"]
-
-
 
 
 @pytest.mark.asyncio
@@ -419,19 +426,19 @@ async def test_fallback_interceptor_catches_timeout():
     """Verify fallback interceptor catches `TimeoutError`."""
     # create a mock handler that raises `TimeoutError`
     mock_handler = AsyncMock(side_effect=TimeoutError("Request timed out"))
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -443,19 +450,19 @@ async def test_fallback_interceptor_catches_connection_error():
     """Verify fallback interceptor catches `ConnectionError`."""
     # create a mock handler that raises `ConnectionError`
     mock_handler = AsyncMock(side_effect=ConnectionError("Could not connect"))
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -467,19 +474,19 @@ async def test_fallback_interceptor_catches_generic_exception():
     """Verify fallback interceptor catches base exceptions."""
     # create a mock handler that raises `ValueError`
     mock_handler = AsyncMock(side_effect=ValueError("Invalid input"))
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -491,26 +498,28 @@ async def test_retry_interceptor_retries_on_failure():
     """Verify retry logic attempts multiple times before failing."""
     # create a mock handler that fails twice then succeeds on the 3rd try
     call_count = 0
-    
+
     async def mock_handler_with_retries(request):
         nonlocal call_count
         call_count += 1
         if call_count < 3:
             raise ConnectionError("Temporary failure")
         return {"success": True}
-    
+
     from agent import retry_tool_call, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the retry function with 3 max retries and no delay
-    result = await retry_tool_call(mock_request, mock_handler_with_retries, max_retries=3, delay=0.0)
-    
+    result = await retry_tool_call(
+        mock_request, mock_handler_with_retries, max_retries=3, delay=0.0
+    )
+
     # assert that it succeeds on the 3rd attempt
     assert result == {"success": True}
     assert call_count == 3
@@ -525,30 +534,36 @@ async def test_fallback_interceptor_called_in_agent_graph(monkeypatch):
         mock_session = AsyncMock()
         mock_tool_result = MagicMock()
         mock_text_content = MagicMock(spec=TextContent)
-        mock_text_content.text = '{"packages": [{"name": "test-package", "license": "MIT"}]}'
+        mock_text_content.text = (
+            '{"packages": [{"name": "test-package", "license": "MIT"}]}'
+        )
         mock_tool_result.content = [mock_text_content]
         mock_session.call_tool = AsyncMock(return_value=mock_tool_result)
-        
+
         mock_client_instance = MagicMock()
-        mock_client_instance.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_client_instance.session.return_value.__aexit__ = AsyncMock(return_value=None)
-    
+        mock_client_instance.session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_client_instance.session.return_value.__aexit__ = AsyncMock(
+            return_value=None
+        )
+
         mp.setattr(
             "langchain_mcp_adapters.client.MultiServerMCPClient",
-            MagicMock(return_value=mock_client_instance)
+            MagicMock(return_value=mock_client_instance),
         )
-        
+
         # mock the LLM
         mock_prompt = MagicMock()
         mock_prompt_template = MagicMock()
         mock_prompt_template.from_messages = MagicMock(return_value=mock_prompt)
-        
+
         mock_llm_chain = MagicMock()
         mock_llm_chain.ainvoke = AsyncMock(return_value="Test report")
-        
+
         mock_prompt.__or__ = MagicMock(return_value=mock_llm_chain)
         mock_llm_chain.__or__ = MagicMock(return_value=mock_llm_chain)
-        
+
         mock_llm_instance = MagicMock()
         mock_chat_openai = MagicMock(return_value=mock_llm_instance)
 
@@ -557,72 +572,72 @@ async def test_fallback_interceptor_called_in_agent_graph(monkeypatch):
 
         mp.setattr("langchain_openai.ChatOpenAI", mock_chat_openai)
         mp.setattr("langchain_core.prompts.ChatPromptTemplate", mock_prompt_template)
-        
+
         # reload the agent to grab the mocked classes and attributes
         import agent
+
         importlib.reload(agent)
 
         # create a spy wrapper around fallback_interceptor
         from agent import fallback_interceptor
-        
+
         interceptor_call_count = 0
         original_interceptor = fallback_interceptor
-        
+
         async def interceptor_spy(request, handler):
             nonlocal interceptor_call_count
             interceptor_call_count += 1
             return await original_interceptor(request, handler)
-        
+
         mp.setattr("agent.fallback_interceptor", interceptor_spy)
-        
+
         # import and then build agent graph
         from agent import build_agent_graph, AgentState
-        
+
         graph = build_agent_graph()
-        
+
         state = AgentState(
             project_name="test",
             requirements_content="requests==2.0.0",
             auth_token="test-token",
             analysis_json={},
-            final_report=""
+            final_report="",
         )
-        
+
         # run the agent graph
         result = await graph.ainvoke(state)
-        
+
         # assert that the interceptor was called
-        # NOTE: this test verifies the interceptor is in the call path, but the actual call count 
+        # NOTE: this test verifies the interceptor is in the call path, but the actual call count
         # may vary based on implementation
         assert result is not None
-
-
 
 
 @pytest.mark.asyncio
 async def test_exception_group_multiple_httpx_errors():
     """Test that exception groups are caught by interceptor and return error dict."""
+
     # create a mock handler that raises an `ExceptionGroup`
     def raise_exception_group(request):
-        raise ExceptionGroup("Multiple errors", [
-            httpx.ConnectError("Connection failed"),
-            ValueError("Some other error")
-        ])
-    
+        raise ExceptionGroup(
+            "Multiple errors",
+            [httpx.ConnectError("Connection failed"), ValueError("Some other error")],
+        )
+
     mock_handler = AsyncMock(side_effect=raise_exception_group)
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -631,30 +646,28 @@ async def test_exception_group_multiple_httpx_errors():
 @pytest.mark.asyncio
 async def test_exception_group_nested():
     """Test that nested exception groups are caught by interceptor and return error dict."""
+
     # create a mock handler that raises nested `ExceptionGroup`s
     def raise_nested_exception_group(request):
-        inner_group = ExceptionGroup("Inner errors", [
-            ValueError("Inner error 1")
-        ])
-        raise ExceptionGroup("Outer errors", [
-            httpx.ConnectError("Connection failed"),
-            inner_group
-        ])
-    
+        inner_group = ExceptionGroup("Inner errors", [ValueError("Inner error 1")])
+        raise ExceptionGroup(
+            "Outer errors", [httpx.ConnectError("Connection failed"), inner_group]
+        )
+
     mock_handler = AsyncMock(side_effect=raise_nested_exception_group)
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-    
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # assert that it returns an error
     assert isinstance(result, dict)
     assert "error" in result
@@ -663,27 +676,32 @@ async def test_exception_group_nested():
 @pytest.mark.asyncio
 async def test_exception_group_all_caught():
     """Verify exception groups are caught by interceptor and return error dict."""
+
     # create a mock handler that raises `ExceptionGroup` with various types
     def raise_mixed_exception_group(**kwargs):
-        raise ExceptionGroup("Mixed errors", [
-            httpcore.ConnectError("httpcore error"),
-            httpx.ConnectError("httpx error"),
-            RuntimeError("runtime error")
-        ])
+        raise ExceptionGroup(
+            "Mixed errors",
+            [
+                httpcore.ConnectError("httpcore error"),
+                httpx.ConnectError("httpx error"),
+                RuntimeError("runtime error"),
+            ],
+        )
+
     mock_handler = AsyncMock(side_effect=raise_mixed_exception_group)
-    
+
     from agent import fallback_interceptor, MCPToolCallRequest
-     
+
     # create a mock request
     mock_request = MCPToolCallRequest(
         name="analyze_dependencies",
         args={"project_name": "test"},
-        server_name="Mock MCP Server"
+        server_name="Mock MCP Server",
     )
-    
+
     # call the interceptor directly (since mocking it causes issues)
     result = await fallback_interceptor(mock_request, mock_handler)
-    
+
     # verify error dict is returned
     assert isinstance(result, dict)
     assert "error" in result
