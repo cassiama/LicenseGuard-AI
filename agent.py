@@ -1,6 +1,10 @@
 import os
 import json
-from typing import TypedDict, Dict, Any
+import asyncio
+import traceback
+import httpx
+import httpcore
+from typing import Awaitable, Callable, TypedDict, Dict, Any, Optional
 from dotenv import load_dotenv
 from mcp.types import TextContent
 from langgraph.graph import StateGraph, START, END
@@ -8,12 +12,13 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.interceptors import MCPToolCallRequest, MCPToolCallResult
 from pydantic import SecretStr
 
 AGENT_NAME = "licenseguard-agent"
 
 # import the environment variables and set up the MCP server
-# TODO: add a Pydantic Settings setup so that we"re not using `python-dotenv` anymore
+# TODO: add a Pydantic Settings setup so that we're not using `python-dotenv` anymore
 load_dotenv()
 MCP_SERVER_HOST = os.getenv("MCP_SERVER_HOST", "http://localhost")
 MCP_SERVER_PORT = os.getenv("MCP_SERVER_PORT", "8000")
@@ -21,16 +26,6 @@ MCP_URL = f"{MCP_SERVER_HOST}:{MCP_SERVER_PORT}/mcp"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 if OPENAI_API_KEY == "":
     raise RuntimeError("Missing OpenAI API key!")
-
-
-class AgentState(TypedDict):
-    project_name: str
-    requirements_content: str
-    auth_token: (
-        str  # TODO: remove this once OAuth Client Credentials login flow is implemented
-    )
-    analysis_json: dict  # the tool's output
-    final_report: str  # the LLM"s summary
 
 
 SYSTEM_PROMPT = """
@@ -76,6 +71,77 @@ Here is the compliance analysis for your project.
 """
 
 
+class AgentState(TypedDict):
+    project_name: str
+    requirements_content: str
+    auth_token: (
+        str  # TODO: remove this once OAuth Client Credentials login flow is implemented
+    )
+    analysis_json: dict  # the tool's output
+    final_report: str  # the LLM"s summary
+
+
+# code inspired by the "Retry on error" interceptor from the LangChain docs:
+# https://docs.langchain.com/oss/python/langchain/mcp#custom-interceptors
+async def retry_tool_call(
+    request: MCPToolCallRequest,
+    handler: Callable[[MCPToolCallRequest], Awaitable[MCPToolCallResult]],
+    max_retries: int = 3,
+    delay: float = 1.0,
+) -> Optional[MCPToolCallResult]:
+    """
+    Retry the tool call on failure up to `max_retries` times with a delay.
+
+    :param request: the tool call request to the MCP server
+    :type request: MCPToolCallRequest
+    :param handler: the tool call handler function
+    :type handler: Callable[[MCPToolCallRequest], Awaitable[MCPToolCallResult]]
+    :param max_retries: the maximum number of retry attempts
+    :type max_retries: int
+    :param delay: the delay (in seconds) between retry attempts
+    :type delay: float
+    :return: either the result from successfully calling the tool, or raises the last exception encountered
+    :rtype: MCPToolCallResult | None
+    """
+    last_exception = Exception()
+    for _ in range(max_retries):
+        try:
+            result = await handler(request)
+            return result
+        except Exception as e:
+            last_exception = e
+            await asyncio.sleep(delay)
+    raise last_exception
+
+
+# TODO: remove the interceptors from the code bc they're causing problems
+# code taken from the "Error handling with fallback" interceptor from the LangChain docs:
+# https://docs.langchain.com/oss/python/langchain/mcp#custom-interceptors
+async def fallback_interceptor(
+    request: MCPToolCallRequest,
+    handler: Callable[[MCPToolCallRequest], Awaitable[MCPToolCallResult]],
+):
+    """
+    Return a fallback value if tool execution fails.
+
+    :param request: the tool call request to the MCP server
+    :type request: MCPToolCallRequest
+    :param handler: the tool call handler function
+    :type handler: Callable[[MCPToolCallRequest], Awaitable[MCPToolCallResult]]
+    """
+    try:
+        return await retry_tool_call(request, handler)
+    except TimeoutError:
+        return {"error": f"Tool {request.name} timed out. Please try again later."}
+    except ConnectionError:
+        return {"error": f"Could not connect to the `{request.name}` service."}
+    except Exception as e:
+        traceback.print_exc()
+        return {
+            "error": f"An unknown error occurred while executing `{request.name}` service: {str(e)}"
+        }
+
+
 async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
     """
     An async function that calls the `analyze_dependencies` tool on the MCP server. Takes in the agent's current state (includes project name, the content of the requirements.txt file, and the current user's JWT) as an argument in order to receive a JSON from the MCP server.
@@ -89,12 +155,13 @@ async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
     requirements_content = state["requirements_content"]
     auth_token = state["auth_token"]
 
-    analysis_json: str = ""
+    analysis_json: str | Dict[str, str] = ""
 
     try:
         # create the MCP client so that we can call the MCP server
         client = MultiServerMCPClient(
-            connections={AGENT_NAME: {"url": MCP_URL, "transport": "streamable_http"}}
+            connections={AGENT_NAME: {"url": MCP_URL, "transport": "streamable_http"}},
+            tool_interceptors=[fallback_interceptor],
         )
         async with client.session(AGENT_NAME) as session:
             # invoke the specific tool we need
@@ -111,14 +178,26 @@ async def call_analysis_tool(state: AgentState) -> Dict[str, Any]:
             if hasattr(tool_result, "content") and isinstance(
                 tool_result.content[0], TextContent
             ):
-                analysis_json = tool_result.content[0].text
+                text_content: str = str(tool_result.content[0].text)
+                # if there's an error that the MCP server itself successfully handled, then our
+                # analysis JSON will reflect that
+                if "error" in text_content:
+                    analysis_json = {"error": text_content}
+                else:
+                    # otherwise, just return the actual text as is, since it SHOULD be a successful
+                    # tool call
+                    analysis_json = text_content
 
         # Return the JSON result to be put into the "analysis_json" key in our state
         return {"analysis_json": analysis_json}
 
-    except Exception as e:
-        # TODO: improve the error handling to be less... basic
-        return {"analysis_json": {"error": str(e)}}
+    except* httpcore.ConnectError as ce:
+        raise ce
+    except* httpx.ConnectError as ce:
+        raise ce
+    except* Exception as e:
+        traceback.print_exc()
+        raise e
 
 
 async def summarize_report(state: AgentState) -> Dict[str, str]:
@@ -133,6 +212,7 @@ async def summarize_report(state: AgentState) -> Dict[str, str]:
     analysis_json: dict = state["analysis_json"]
 
     if "error" in analysis_json:
+        print(analysis_json)
         return {"final_report": f"Failed to generate report: {analysis_json['error']}"}
 
     # set up the llm and the prompt
